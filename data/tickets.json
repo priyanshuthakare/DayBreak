@@ -1,0 +1,28 @@
+[
+  {
+    "title": "ttut",
+    "description": "dffvcfbedhdbdbd efvsdgs",
+    "requester": "Avery Chen",
+    "product": "HR Core",
+    "submitted_at": "2026-11-26T13:07:00+00:00",
+    "id": "867ff973",
+    "created_at": "2026-11-25T21:04:13.132144+00:00",
+    "status": "Triaged",
+    "category": "HR Core",
+    "subcategory": "Account access",
+    "priority": "Low",
+    "sla_hours": 48,
+    "confidence": 0.85,
+    "category_reason": "The selected product is HR Core; the issue text indicates account access.",
+    "priority_reason": "A standard request with no immediate deadline indicated.",
+    "human_review": false,
+    "review_reason": null,
+    "queue": "People Tech L1",
+    "assignee_group": "People Tech · HR Core",
+    "kb": null,
+    "kb_score": 0,
+    "kb_skeleton": "# ttut\n\n## Symptoms\nDescribe the issue.\n\n## Troubleshooting\nDocument verified steps.\n\n## Escalation\nIdentify the appropriate support group.",
+    "reply": "Hi Avery Chen,\n\nThanks for reaching out. I understand you need help with ttut.\n\nWe are checking the right next steps for this issue. Please share any non-sensitive error message and when the issue started.\n\nIf the issue continues, please share the time it occurred and any non-sensitive error message so we can investigate. We aim to respond within 48 hour(s).\n\nThanks,\nPeople Tech Support",
+    "reply_source": "Template draft"
+  }
+]
