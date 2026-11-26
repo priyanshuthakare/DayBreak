@@ -1,7 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Daybreak — People Tech triage</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/workspace.css"></head>
 <body><header class="topbar"><a class="brand" href="/" aria-label="Daybreak home"><span class="brandmark">✳</span> daybreak<span class="brand-dot">.</span></a><nav id="workspace-nav" aria-label="Main navigation" hidden><button class="nav active" data-view="queue">Workspace</button><button class="nav" data-view="insights">Insights</button><button class="nav" data-view="about">About</button></nav><div class="top-right" id="account-controls" hidden><span class="account-dot"></span><span class="account-label">Your workspace</span><div id="user-button"></div></div></header>
-<section id="auth-screen" class="auth-screen" aria-live="polite"><div class="auth-card"><div class="eyebrow"><span class="spark">✳</span> YOUR DAILY WORKSPACE</div><h1>A little more clarity,<br><em>for the day ahead.</em></h1><p>Sign in to your support workspace.</p><p id="auth-message">Loading sign-in…</p><div id="sign-in"></div></div></section>
+<main id="auth-screen" class="auth-screen" aria-label="Daybreak sign-in">
+  <p id="auth-message" role="status">Loading sign-in…</p>
+  <div id="sign-in"></div>
+</main>
 <main id="workspace" hidden>
   <div class="workspace-context"><span class="eyebrow">WORKSPACE</span><div id="organization-switcher"></div></div>
   <section id="queue-view" aria-labelledby="queue-title">

@@ -100,19 +100,27 @@ tbody tr:focus-within { background: #f5f8f4; }
 .about-card p { max-width: 60ch; }
 #workspace footer { padding: 2rem 0; color: #6b796e; font-size: .8rem; letter-spacing: 0; }
 
-.auth-screen { padding: 4rem 5%; }
-.auth-card h1 { margin: 1rem 0; font-size: 2.5rem; letter-spacing: -.035em; }
-.auth-card > p { color: #5f6c61; }
+.auth-screen {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: calc(100vh - 4.5rem);
+  min-height: calc(100svh - 4.5rem);
+  padding: clamp(1rem, 4vh, 2.5rem) 1rem;
+}
+#sign-in { width: min(100%, 25rem); min-width: 0; }
+#sign-in:empty { display: none; }
+#auth-message { color: #5f6c61; text-align: center; }
 .overlay { z-index: 5; background: #202a2380; }
 .dialog, .detail { border-radius: 14px; padding: 1.75rem; }
 .dialog-head .eyebrow { display: none; }
 .dialog h2 { margin-top: 0; font-size: 1.55rem; letter-spacing: -.03em; }
 .dialog-head p { color: #647066; font-size: .875rem; }
 .close { width: 2.5rem; height: 2.5rem; color: #526153; background: #f0f3ef; }
-form { margin-top: 1.5rem; }
-form label { color: #344237; font-size: .875rem; }
-form input, form select, form textarea, .detail select { border-color: #dbe2d9; color: #29342b; background: #fff; font-size: .9rem; }
-form input::placeholder, form textarea::placeholder { color: #6a776d; opacity: 1; }
+.dialog form { margin-top: 1.5rem; }
+.dialog form label { color: #344237; font-size: .875rem; }
+.dialog form input, .dialog form select, .dialog form textarea, .detail select { border-color: #dbe2d9; color: #29342b; background: #fff; font-size: .9rem; }
+.dialog form input::placeholder, .dialog form textarea::placeholder { color: #6a776d; opacity: 1; }
 .optional { color: #66746a; font-size: .7rem; }
 .form-bottom { gap: 1rem; color: #627066; font-size: .8rem; }
 .error { color: #a64232; font-size: .875rem; }

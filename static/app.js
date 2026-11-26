@@ -133,6 +133,24 @@ function setAuthState({session, organization}) {
     if (!signInMounted) {
       clerk.mountSignIn($('#sign-in'), {
         withSignUp: true, forceRedirectUrl: '/app', signUpForceRedirectUrl: '/app',
+        appearance: {
+          variables: {
+            colorPrimary: '#26382c',
+            colorForeground: '#242a25',
+            colorMutedForeground: '#5f6c61',
+            borderRadius: '0.7rem',
+            spacing: '0.85rem',
+          },
+          elements: {
+            rootBox: {width: '100%'},
+            cardBox: {width: '100%', maxWidth: '100%', boxShadow: '0 10px 32px #26382c14'},
+            card: {padding: 'clamp(1.25rem, 5vw, 2rem)'},
+            headerTitle: {fontSize: '1.5rem', lineHeight: 1.25, letterSpacing: '-0.025em'},
+            socialButtonsBlockButton: {minHeight: '2.75rem'},
+            formFieldInput: {minHeight: '2.75rem'},
+            formButtonPrimary: {minHeight: '2.75rem'},
+          },
+        },
       });
       signInMounted = true;
     }
