@@ -5,3 +5,14 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        value: pk_live_Y2xlcmsuZGF5YnJlYWsuMHhwcml5YW5zaHUubWUk
+      - key: CLERK_ISSUER_URL
+        value: https://clerk.daybreak.0xpriyanshu.me
+      - key: CLERK_ALLOWED_ORIGINS
+        value: https://daybreak.0xpriyanshu.me

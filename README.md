@@ -1,68 +1,84 @@
-# Daybreak — a calmer start to People Tech support
+# Daybreak
 
-Daybreak triages a morning queue: it categorizes requests, suggests next steps, surfaces SLA risk, and flags sensitive cases for a person to review.
+Daybreak helps People Technology teams triage support requests, review suggested priorities and guidance, and track work through to resolution. People review every suggestion; replies are never sent automatically.
 
-![Daybreak queue, ticket details, and insights](walkthrough.gif)
+The service currently available at https://daybreak-ticket-triage.onrender.com is an earlier public version with a shared, temporary data store. Do not enter real data there until the changes in this checkout are configured, tested and deployed.
 
-**Live demo:** Not yet published · **2-minute walkthrough:** Not yet recorded · **Source:** This repository
+## How workspaces work
 
-Open the app, select **Load demo tickets**, and open any ticket to see its reasoning, suggested knowledge article, routing and reply draft. All sample requests are fictional.
+Sign in and use the workspace selector to choose a personal workspace or a Clerk organization. Personal tickets are private to the signed-in user. An organization has a shared queue: every active member can view, create, update, export and delete its tickets. Members cannot access another organization or another user's personal queue. Organization administrators can invite and manage members through Clerk's organization controls.
 
-## A day in the life
-
-1. **Morning queue:** Load the 12 sample requests and scan priorities, SLA countdowns and the requests marked for human review.
-2. **Triage:** Open the LMS login request. Review its Learning category, High priority, four-hour SLA, suggested login article and draft response. Change the ticket status as work progresses.
-3. **Escalate:** Open the compensation-letter request. It is Critical and flagged for human review. The app prepares a cautious draft and never sends it or closes the case on its own.
-4. **Spot a possible outage:** The sample queue contains one LMS slowness report. Add two similar LMS slowness tickets within 30 minutes; open one of them to see the possible-incident flag. An investigator still needs to verify whether there is an outage.
-5. **End of day:** Open Insights for the category breakdown, then use the download button in the queue to export the triage log as CSV.
-
-## Two-minute walkthrough script
-
-- **0:00–0:20:** “This is Daybreak, a synthetic People Technology support queue. It makes a first pass and leaves decisions with the support team.” Load the demo tickets.
-- **0:20–0:55:** Open the LMS login ticket. Show category, priority, SLA, the reason, the matching guide and the draft.
-- **0:55–1:20:** Open the compensation ticket. Point out the human-review flag and explain that no reply is automatically sent.
-- **1:20–1:45:** Add two LMS slowness requests and show the possible-incident flag. Explain that it is a signal to investigate, not a confirmed outage.
-- **1:45–2:00:** Show Insights and CSV export. “The queue and decisions are visible, and sensitive work stays with a person.”
-
-## Speaking the ServiceNow language
-
-These are conceptual analogies, not one-to-one implementations:
-
-| Daybreak | ServiceNow concept | Important distinction |
-| --- | --- | --- |
-| Possible-incident flag | Incident | The flag is a heuristic, not a ServiceNow incident record or a confirmed outage. |
-| Queue and suggested group | Assignment group | The demo suggests routing; it does not assign work in ServiceNow. |
-| Suggested article | Knowledge base | The demo searches local Markdown articles. |
-| Human-review flag | Escalation | The flag requests review; it does not create or manage an escalation. |
-
-This independent demo does not integrate with ServiceNow or claim ServiceNow experience. It was built as proof of work for Cornerstone's People Technology Intern role (req 11869), and is not a Cornerstone product.
-
-## Measuring triage time
-
-No timing comparison has been measured yet. For a meaningful comparison, have a person triage all 12 synthetic tickets manually using a written rubric and a stopwatch, then perform the same work in Daybreak, including reviewing the results. Record the participant, date, task definition, total and per-ticket times, and corrections required. Repeat with the order reversed or different comparable tickets to reduce practice effects. Publish observed results only; the app currently reports no time-savings claim.
+Open a ticket to review its classification, suggested knowledge, SLA and draft reply. Change its status as work progresses. Deletion requires confirmation and removes the ticket for everyone in the selected workspace. CSV export contains only the selected workspace's tickets. Incident indicators compare tickets within the selected workspace.
 
 ## Run locally
 
-```bash
+Use Python 3.10 or later. Create and activate a virtual environment, then install the dependencies:
+
+```powershell
 python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+```
+
+In the selected Clerk application's development instance, enable Organizations and choose **Membership optional** so both individual and team workspaces are available. Configure who may create organizations and invite members. Obtain the instance's publishable key and Frontend API URL. Set these process environment variables in your own terminal; do not commit keys or paste secrets into a chat. The issuer is the instance's Frontend API URL, including `https://` and without a trailing slash. Each allowed origin must exactly match the browser URL's scheme, hostname and port:
+
+```powershell
+$env:CLERK_PUBLISHABLE_KEY = '<development publishable key>'
+$env:CLERK_ISSUER_URL = 'https://<development frontend API hostname>'
+$env:CLERK_ALLOWED_ORIGINS = 'http://localhost:8000'
 python -m uvicorn app:app --reload
 ```
 
-Open http://127.0.0.1:8000. Activate the virtual environment first if desired (`.venv\Scripts\activate` on Windows or `source .venv/bin/activate` on macOS/Linux). Python 3.10+ is required. The queue persists in `data/tickets.json`. To reset, stop the server and replace that file's contents with `[]`. The seed button will not overwrite an existing queue.
+Open http://localhost:8000 and enter the workspace. The application reads process environment variables and does not load an environment file. Local development defaults to `data/daybreak.sqlite3`; set `DATABASE_URL` explicitly to use another SQLite file or PostgreSQL database. The SQLite file is ignored by Git.
 
-## Publish the demo
+Clerk's publishable key is intentionally served to the browser; no Clerk secret key is needed by this integration. The server verifies the session token signature using the configured instance's JWKS endpoint, validates its issuer, lifetime, session and authorized origin, and derives the user and active organization from signed claims. Requests must also match the workspace selected in the interface. Set `CLERK_PUBLISHABLE_KEY` and `CLERK_ISSUER_URL` to the same instance. Tokens without an allowed `azp` claim are rejected.
 
-Push the project to a GitHub repository, then create a Render Blueprint from that repository. `render.yaml` defines the free web service. Once Render has deployed it, verify the public URL and replace the live-demo placeholder above. Free hosting can sleep, and the JSON queue is shared, ephemeral and reset on redeploy: **use only synthetic data**. This deployment is a public demo, not a production support system.
+Membership and session changes are reflected when Clerk issues a fresh session token. A previously issued token remains usable until it expires, with a five-second clock-skew allowance. The server accepts token lifetimes of at most two minutes; retain Clerk's usual one-minute lifetime or configure a shorter one. The app does not provide separate ticket permissions for organization admins and members.
 
-## How it works and limits
+The old `data/tickets.json` is preserved and is not imported because its records have no trustworthy owner. Determine each record's rightful workspace before arranging any migration.
 
-- Categories, priorities, SLA, routing, knowledge search and confidence are deterministic heuristics; confidence and match scores are not calibrated probabilities.
-- The app works without a key. For optional AI-generated drafts on non-sensitive tickets, set `OPENAI_API_KEY`, `OPENAI_MODEL`, and optionally `OPENAI_BASE_URL` to an OpenAI-compatible `/v1` endpoint. If the call fails, the template remains available. Sensitive tickets are not sent to the provider.
-- Compensation, absence, payroll and manager-approval cases are flagged for human review. Nothing is automatically sent or resolved.
-- CSV export downloads the queue's decision log. SLA countdowns use elapsed hours, not business hours. Incident detection currently covers LMS performance requests only.
-- The demo has no authentication, real ServiceNow connection, access controls, production database, or real-time incident monitoring. Do not enter real employee data.
+## Render and Clerk configuration
 
-## Sample scenarios
+The selected Clerk application is `app_3McErVlcG5SzNWTmSyBosU0tUIo`. Its production instance is `ins_3MdMl1KVcxqZsMKIlshXFZoGIfw` for `daybreak.0xpriyanshu.me`. Organizations are enabled with optional membership in both instances. Development and production have separate users and organizations.
 
-The sample file records expected categories and priorities: LMS login (High), onboarding courses (Medium), leave balance (High, human review), performance review (Medium), candidate workflow (Medium), compensation letter (Critical, human review), video playback (Low), leave approval (High, human review), succession data (Medium), HR Core password reset (Low), LMS slowness (Medium), and headcount reporting (Low).
+Clerk issued the following records for the `0xpriyanshu.me` DNS zone. The names below are relative to that zone. If your provider expects a full name, append `.0xpriyanshu.me` once. Keep a single DMARC record at the listed name and preserve any existing stricter policy.
+
+| Type | Name | Value |
+| --- | --- | --- |
+| CNAME | `clerk.daybreak` | `frontend-api.clerk.services` |
+| CNAME | `accounts.daybreak` | `accounts.clerk.services` |
+| CNAME | `clkmail.daybreak` | `mail.asy073lw2cxm.clerk.services` |
+| CNAME | `clk._domainkey.daybreak` | `dkim1.asy073lw2cxm.clerk.services` |
+| CNAME | `clk2._domainkey.daybreak` | `dkim2.asy073lw2cxm.clerk.services` |
+| TXT | `_dmarc.daybreak` | `v=DMARC1; p=none;` |
+
+From this linked checkout, run `npx clerk deploy status --mode agent` to check DNS and TLS verification. In the production Clerk Dashboard, configure your own OAuth credentials for Google and GitHub, or disable providers that you will not offer. Use the callbacks shown by Clerk. At release, add `daybreak.0xpriyanshu.me` as a custom domain on the secured Render service and use Render's DNS target for the app hostname.
+
+Provision persistent PostgreSQL and configure backups. In the Render service's environment settings, set:
+
+| Variable | Value |
+| --- | --- |
+| `APP_ENV` | `production` |
+| `DATABASE_URL` | PostgreSQL connection URL, stored privately in Render |
+| `CLERK_PUBLISHABLE_KEY` | The selected application's production publishable key, already set in `render.yaml` |
+| `CLERK_ISSUER_URL` | `https://clerk.daybreak.0xpriyanshu.me` |
+| `CLERK_ALLOWED_ORIGINS` | `https://daybreak.0xpriyanshu.me` |
+
+`render.yaml` sets the production mode, public Clerk configuration and allowed origin. Supply the database URL in Render. If you manage the service without Blueprint sync, copy the public values from `render.yaml` into the service's environment settings. Production startup rejects missing settings, development Clerk keys, non-HTTPS origins and SQLite. Ensure the service can reach Clerk's JWKS endpoint and the database. Production storage is separate from the old JSON file and the local database.
+
+Before deploying, verify the selected Clerk instance and target PostgreSQL service with two authorized users in the same organization and a user outside it. Check invitation and switching, shared ticket creation, updates, export and deletion, isolation from other organizations and personal workspaces, and persistence across a restart. Configure and test database recovery. Deleting a ticket removes it from the active database; existing backups may retain it.
+
+## Test
+
+```powershell
+python -m pip install pytest
+python -m pytest -q
+```
+
+The tests sign temporary test tokens with ephemeral keys and exercise server-side verification and workspace isolation with a temporary SQLite database. `tests/test_postgres.py` also exercises the PostgreSQL driver when `DAYBREAK_TEST_POSTGRES_URL` points to a disposable local server; it is skipped otherwise. The browser harness under `tests/` uses temporary test identities and must never be deployed. These checks do not replace verification against the selected Clerk instance and hosted PostgreSQL service.
+
+## Scope and limitations
+
+Categories, priorities, SLA timing, routing, knowledge search and confidence use deterministic heuristics; scores are not calibrated probabilities. SLA countdowns use elapsed hours, not business hours. The incident indicator covers LMS performance requests and needs human investigation. Daybreak does not integrate with ServiceNow or monitor incidents in real time.
+
+AI-generated drafts are disabled by default. Setting `ENABLE_AI_DRAFTS=true` with `OPENAI_API_KEY`, `OPENAI_MODEL`, and optionally `OPENAI_BASE_URL` sends ticket content to the configured provider for tickets not flagged for human review. Sensitivity rules can miss private information; assess provider terms and data handling before enabling this. If a call fails, the template remains available.

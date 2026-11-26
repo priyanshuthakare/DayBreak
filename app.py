@@ -3,22 +3,46 @@ import io
 import json
 import os
 import re
-import threading
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib import request
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import storage
+from auth import current_scope
+from settings import Settings
+
 ROOT = Path(__file__).resolve().parent
-STORE = ROOT / 'data' / 'tickets.json'
-LOCK = threading.RLock()
-app = FastAPI(title='Ticket Triage')
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.settings = Settings.from_environment()
+    app.state.store = storage.create_store(app.state.settings.database_url)
+    try:
+        yield
+    finally:
+        app.state.store.dispose()
+
+
+app = FastAPI(title='Ticket Triage', lifespan=lifespan)
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
+
+
+@app.middleware('http')
+async def response_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
+    else:
+        # Public pages and assets use stable URLs across releases.
+        response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 PRODUCTS = ['LMS', 'Absence', 'Performance', 'ATS', 'Compensation', 'LXP', 'Succession', 'HR Core', 'Reporting', 'Other']
 SLAS = {'Low': 48, 'Medium': 24, 'High': 4, 'Critical': 1}
@@ -36,17 +60,6 @@ class StatusUpdate(BaseModel):
 
 def now():
     return datetime.now(timezone.utc)
-
-def read_tickets():
-    if not STORE.exists():
-        return []
-    return json.loads(STORE.read_text(encoding='utf-8'))
-
-def save_tickets(tickets):
-    STORE.parent.mkdir(exist_ok=True)
-    temp = STORE.with_suffix('.tmp')
-    temp.write_text(json.dumps(tickets, indent=2, ensure_ascii=False), encoding='utf-8')
-    temp.replace(STORE)
 
 def articles():
     result = []
@@ -71,9 +84,9 @@ def match_article(text, product):
 
 def optional_llm(ticket, result):
     key, base, model = os.getenv('OPENAI_API_KEY'), os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1'), os.getenv('OPENAI_MODEL')
-    if not key or not model or result['human_review']:
+    if os.getenv('ENABLE_AI_DRAFTS', '').lower() != 'true' or not key or not model or result['human_review']:
         return result
-    prompt = ('Draft a concise, empathetic first response for this synthetic HR support ticket. Do not assert a fix or request sensitive information. '
+    prompt = ('Draft a concise, empathetic first response for this HR support ticket. Do not assert a fix or request sensitive information. '
               'Never include compensation figures. Return only the reply. Ticket: ' + json.dumps(ticket) + '\nSuggested article: ' + (result['kb']['title'] if result['kb'] else 'none'))
     payload = json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'temperature': 0.2}).encode()
     try:
@@ -113,67 +126,68 @@ def create_ticket(data):
     submitted = data.submitted_at or now()
     if submitted.tzinfo is None: submitted = submitted.replace(tzinfo=timezone.utc)
     ticket = data.model_dump(mode='json')
-    ticket.update({'id': str(uuid.uuid4())[:8], 'submitted_at': submitted.isoformat(), 'created_at': now().isoformat(), 'status': 'Triaged'})
+    ticket.update({'id': str(uuid.uuid4()), 'submitted_at': submitted.isoformat(), 'created_at': now().isoformat(), 'status': 'Triaged'})
     ticket.update(triage(ticket))
     return ticket
 
 def incident_flags(tickets):
-    for ticket in tickets:
+    candidates = []
+    for index, ticket in enumerate(tickets):
         ticket['incident'] = False
-        if ticket['product'] != 'LMS' or ticket['subcategory'] != 'Performance / availability': continue
-        time = datetime.fromisoformat(ticket['submitted_at'])
-        times = sorted(datetime.fromisoformat(other['submitted_at']) for other in tickets if other['product'] == 'LMS' and other.get('subcategory') == ticket['subcategory'])
-        ticket['incident'] = any(start <= time <= start + timedelta(minutes=30) and sum(start <= other <= start + timedelta(minutes=30) for other in times) >= 3 for start in times)
+        if ticket['product'] == 'LMS' and ticket.get('subcategory') == 'Performance / availability':
+            candidates.append((datetime.fromisoformat(ticket['submitted_at']), index))
+    candidates.sort()
+    difference = [0] * (len(candidates) + 1)
+    left = 0
+    for right, (submitted, _) in enumerate(candidates):
+        while submitted - candidates[left][0] > timedelta(minutes=30):
+            left += 1
+        if right - left + 1 >= 3:
+            difference[left] += 1
+            difference[right + 1] -= 1
+    active = 0
+    for position, (_, index) in enumerate(candidates):
+        active += difference[position]
+        tickets[index]['incident'] = active > 0
     return tickets
 
 @app.get('/')
-def index(): return FileResponse(ROOT / 'static' / 'index.html')
+def index(): return FileResponse(ROOT / 'static' / 'landing.html')
+
+@app.get('/app')
+def workspace(): return FileResponse(ROOT / 'static' / 'index.html')
+
+@app.get('/api/config')
+def public_config(request: Request):
+    settings = request.app.state.settings
+    return {'publishable_key': settings.publishable_key}
 
 @app.get('/api/tickets')
-def list_tickets():
-    with LOCK: return incident_flags(read_tickets())
+def list_tickets(request: Request, scope: str = Depends(current_scope)):
+    return incident_flags(storage.list_tickets(request.app.state.store, scope))
 
 @app.post('/api/tickets')
-def add_ticket(data: Intake):
+def add_ticket(data: Intake, request: Request, scope: str = Depends(current_scope)):
     ticket = create_ticket(data)
-    with LOCK:
-        tickets = read_tickets()
-        tickets.insert(0, ticket)
-        save_tickets(tickets)
+    storage.add_ticket(request.app.state.store, scope, ticket)
     return ticket
 
 @app.patch('/api/tickets/{ticket_id}')
-def update_ticket(ticket_id: str, update: StatusUpdate):
+def update_ticket(ticket_id: str, update: StatusUpdate, request: Request, scope: str = Depends(current_scope)):
     if update.status not in STATUSES: raise HTTPException(422, 'Unknown status')
-    with LOCK:
-        tickets = read_tickets()
-        ticket = next ( (t for t in tickets if t['id'] == ticket_id), None)
-        if not ticket: raise HTTPException(404, 'Ticket not found')
-        ticket['status'] = update.status
-        save_tickets(tickets)
+    ticket = storage.update_status(request.app.state.store, scope, ticket_id, update.status)
+    if not ticket: raise HTTPException(404, 'Ticket not found')
     return ticket
 
-@app.post('/api/seed')
-def seed():
-    with LOCK:
-        tickets = read_tickets()
-        if tickets: return {'added': 0, 'message': 'Queue already contains tickets.'}
-        samples = json.loads((ROOT / 'data' / 'samples.json').read_text(encoding='utf-8'))
-        for i, sample in enumerate(samples):
-            sample['submitted_at'] = (now() - timedelta(minutes=(len(samples) - i) * 4)).isoformat()
-            ticket = create_ticket(Intake(**sample))
-            ticket['expected'] = sample.get('expected')
-            tickets.append(ticket)
-        tickets.reverse()
-        save_tickets(tickets)
-    return {'added': len(tickets)}
-
-@app.get('/api/samples')
-def samples(): return json.loads((ROOT / 'data' / 'samples.json').read_text(encoding='utf-8'))
+@app.delete('/api/tickets/{ticket_id}', status_code=204)
+def delete_ticket(ticket_id: str, request: Request, scope: str = Depends(current_scope)):
+    if not storage.delete_ticket(request.app.state.store, scope, ticket_id):
+        raise HTTPException(404, 'Ticket not found')
+    return Response(status_code=204)
 
 @app.get('/api/export')
-def export():
-    with LOCK: tickets = incident_flags(read_tickets())
+def export(request: Request, scope: str = Depends(current_scope)):
+    tickets = incident_flags(storage.list_tickets(request.app.state.store, scope))
     output = io.StringIO(newline='')
     fields = ['id','title','requester','product','submitted_at','status','category','subcategory','priority','sla_hours','category_reason','priority_reason','human_review','incident']
     writer = csv.DictWriter(output, fieldnames=fields, extrasaction='ignore')
